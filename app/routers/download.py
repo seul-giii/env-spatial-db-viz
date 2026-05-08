@@ -5,9 +5,12 @@ from app.database import get_db
 from app.models import DownloadTask
 from app.schemas import DownloadRequest, TaskResponse
 from app.services.data_export_service import generate_export_file
+from app.services.s3_uploader import upload_to_s3_and_get_url
+import os
+from app.models import File
+from fastapi import HTTPException
 
 router = APIRouter()
-
 
 def process_export_task(task_id: int, category: str, target_format: str, db: Session):
 
@@ -24,12 +27,32 @@ def process_export_task(task_id: int, category: str, target_format: str, db: Ses
         generated_file_path = generate_export_file(db, category, target_format)
         print(f"✅ [Task ID: {task_id}] 파일 생성 완료! 위치: {generated_file_path}")
 
-        # TODO: 2. 여기서 S3 업로드 로직이 들어갈 예정입니다. (다음 스텝)
+        # 2. S3 업로드 및 Presigned URL 획득
+        file_name = os.path.basename(generated_file_path)
+        download_url = upload_to_s3_and_get_url(generated_file_path, file_name)
+        print(f"✅ [Task ID: {task_id}] S3 업로드 완료! 다운로드 링크 발급 완료")
 
-        # 3. DB 상태를 COMPLETED로 업데이트
+        # 3. DB FILES 테이블에 기록 (ERD 반영)
+        new_file_record = File(
+            file_name=file_name,
+            file_size=os.path.getsize(generated_file_path),
+            format=target_format.upper(),
+            s3_path=download_url,
+            file_type="EXPORT"
+        )
+        db.add(new_file_record)
+        db.commit()
+        db.refresh(new_file_record)
+
+        # 4. DB DOWNLOAD_TASKS 테이블 상태 및 연결 업데이트
+        task.result_file_id = new_file_record.id
         task.status = "COMPLETED"
         task.completed_at = datetime.now()
         db.commit()
+
+        # 5. 서버 용량 확보를 위해 로컬에 남은 임시 파일 삭제
+        if os.path.exists(generated_file_path):
+            os.remove(generated_file_path)
 
     except Exception as e:
         print(f"❌ [Task ID: {task_id}] 작업 실패: {str(e)}")
@@ -68,3 +91,31 @@ def request_download(
         status=new_task.status,
         message="다운로드 작업이 서버 백그라운드에서 시작되었습니다."
     )
+
+
+@router.get("/spatial/task/{task_id}")
+def check_task_status(task_id: int, db: Session = Depends(get_db)):
+    """
+    프론트엔드가 task_id를 가지고 작업 진행 상황과 최종 S3 다운로드 링크를 확인하는 API
+    """
+    # 1. 작업(Task) 조회
+    task = db.query(DownloadTask).filter(DownloadTask.id == task_id).first()
+
+    if not task:
+        raise HTTPException(status_code=404, detail="해당 작업을 찾을 수 없습니다.")
+
+    # 2. 결과 응답 구성
+    response_data = {
+        "task_id": task.id,
+        "status": task.status,  # PENDING, PROCESSING, COMPLETED, FAILED
+        "target_format": task.target_format,
+        "download_url": None
+    }
+
+    # 3. 작업이 완료되었다면 FILES 테이블을 조회하여 S3 링크를 꺼내옴.
+    if task.status == "COMPLETED" and task.result_file_id:
+        result_file = db.query(File).filter(File.id == task.result_file_id).first()
+        if result_file:
+            response_data["download_url"] = result_file.s3_path
+
+    return response_data
