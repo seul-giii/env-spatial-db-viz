@@ -1,13 +1,14 @@
-from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Dict, Literal, Optional
 
-# 사용자가 API로 보내는 요청 데이터 구조
+from pydantic import BaseModel
+
+
 class DownloadRequest(BaseModel):
     category: str
-    target_format: str
-    filters: Optional[Dict] = None  # 추가 필터링 조건
+    target_format: Literal["CSV", "EXCEL", "SHP"]
+    filters: Optional[Dict[str, str]] = None
 
-# 서버가 응답하는 데이터 구조
+
 class TaskResponse(BaseModel):
     task_id: int
     status: str
