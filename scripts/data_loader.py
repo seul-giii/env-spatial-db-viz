@@ -1,19 +1,21 @@
 import os
-import psycopg2
-import sys
-import pandas as pd
 import json
+from datetime import datetime
+import pandas as pd
 import geopandas as gpd
 import rasterio
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
-from geoalchemy2.shape import from_shape
-from datetime import datetime
 
-from sqlalchemy.engine import row
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+env_path = os.path.join(BASE_DIR, '.env')
+load_dotenv(dotenv_path=env_path, override=True)
 
-# DB 연결 설정 (PostgreSQL + PostGIS)
-DB_URL = "postgresql://postgres:0617@localhost:5432/capstone_gis"
+DB_URL = os.getenv("DATABASE_URL")
+if not DB_URL:
+    raise ValueError("❌ DATABASE_URL 환경 변수가 설정되지 않았습니다.")
 engine = create_engine(DB_URL)
+
 
 class SpatialDataLoader:
     def __init__(self, engine):
@@ -22,51 +24,53 @@ class SpatialDataLoader:
     def load_vector_data(self, file_path, category_name, encoding='utf-8', source_crs=None):
         try:
             print(f"[{category_name}] 벡터 데이터 로딩 시작: {file_path}")
-
-            # 1. 데이터 읽기
             gdf = gpd.read_file(file_path, encoding=encoding)
 
-            # 2. 좌표계 설정 및 변환
             if gdf.crs is None and source_crs:
                 gdf.set_crs(source_crs, inplace=True)
-
             if gdf.crs and gdf.crs.to_string() != "EPSG:4326":
                 print(f"[{category_name}] 좌표계 변환 수행 -> EPSG:4326")
                 gdf = gdf.to_crs(epsg=4326)
 
-            # 3. DB 적재
+            # 파일 이름과 용량 추출
+            file_name = os.path.basename(file_path)
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+
             with self.engine.begin() as conn:
+                file_insert_sql = text("""
+                                    INSERT INTO files (file_type, format, file_name, file_size, s3_path, created_at)
+                                    VALUES ('ORIGINAL', 'SHP', :file_name, :file_size, :s3_path, CURRENT_TIMESTAMP)
+                                    RETURNING id
+                                """)
+                result = conn.execute(file_insert_sql, {
+                    "file_name": file_name,
+                    "file_size": file_size,
+                    "s3_path": "LOCAL_ORIGINAL"
+                })
+                new_file_id = result.scalar()
+
+                print(f"[{category_name}] 원본 파일 등록 완료 (FILES ID: {new_file_id})")
+
+                insert_sql = text("""
+                    INSERT INTO spatial_data (category, geom, properties, original_file_id, region_name)
+                    VALUES (:category, ST_GeomFromText(:geom, 4326), :properties, :original_file_id, :region_name)
+                """)
+
                 for _, row in gdf.iterrows():
-                    # 속성 데이터 추출 (geometry 제외)
                     props = row.drop('geometry').to_dict()
-
-                    # NaN(결측치) 값을 JSON 표준인 null(None)로 안전하게 변환
-                    clean_props = {}
-                    for k, v in props.items():
-                        if pd.isna(v):  # 값이 비어있다면 (NaN, NaT 등)
-                            clean_props[k] = None
-                        else:
-                            clean_props[k] = v
-
-                    # 정화된 딕셔너리로 JSON 생성
+                    clean_props = {k: (None if pd.isna(v) else v) for k, v in props.items()}
                     props_json = json.dumps(clean_props, ensure_ascii=False, default=str)
-
-                    # PostGIS geometry 생성 (WKT 텍스트 방식)
                     geom_wkt = row['geometry'].wkt if row['geometry'] else None
 
-                    sql = text("""
-                        INSERT INTO SPATIAL_DATA (category, geom, properties, created_at)
-                        VALUES (:category, ST_GeomFromText(:geom, 4326), :properties, :created_at)
-                    """)
-
-                    conn.execute(sql, {
+                    conn.execute(insert_sql, {
                         "category": category_name,
                         "geom": geom_wkt,
                         "properties": props_json,
-                        "created_at": datetime.now()
+                        "original_file_id": new_file_id,
+                        "region_name": None
                     })
 
-            print(f"[{category_name}] 적재 완료! ({len(gdf)}건)")
+            print(f"[{category_name}] 공간 데이터 적재 완료! ({len(gdf)}건)")
 
         except Exception as e:
             print(f"❌ [{category_name}] 적재 중 에러 발생: {e}")
@@ -74,6 +78,11 @@ class SpatialDataLoader:
     def load_raster_metadata(self, file_path, category_name):
         try:
             print(f"[{category_name}] 래스터 데이터 분석 시작: {file_path}")
+
+            # 파일 이름과 용량 추출
+            file_name = os.path.basename(file_path)
+            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+
             with rasterio.open(file_path) as src:
                 metadata = {
                     "width": src.width,
@@ -84,16 +93,31 @@ class SpatialDataLoader:
                 }
 
                 with self.engine.begin() as conn:
-                    sql = text("""
-                        INSERT INTO SPATIAL_DATA (category, properties, created_at)
-                        VALUES (:category, :properties, :created_at)
+                    #래스터 원본 파일 정보 등록
+                    file_insert_sql = text("""
+                                            INSERT INTO files (file_type, format, file_name, file_size, s3_path, created_at)
+                                            VALUES ('ORIGINAL', 'TIF', :file_name, :file_size, :s3_path, CURRENT_TIMESTAMP)
+                                            RETURNING id
+                                        """)
+                    result = conn.execute(file_insert_sql, {
+                        "file_name": file_name,
+                        "file_size": file_size,
+                        "s3_path": "LOCAL_ORIGINAL"
+                    })
+                    new_file_id = result.scalar()
+
+                    #발급된 ID로 공간 메타데이터 적재
+                    insert_sql = text("""
+                        INSERT INTO spatial_data (category, properties, original_file_id, region_name)
+                        VALUES (:category, :properties, :original_file_id, :region_name)
                     """)
-                    conn.execute(sql, {
+                    conn.execute(insert_sql, {
                         "category": category_name,
                         "properties": json.dumps(metadata, ensure_ascii=False),
-                        "created_at": datetime.now()
+                        "original_file_id": new_file_id,
+                        "region_name": None
                     })
-            print(f"[{category_name}] 메타데이터 적재 완료!")
+            print(f"[{category_name}] 메타데이터 적재 완료! (FILES ID: {new_file_id})")
         except Exception as e:
             print(f"❌ [{category_name}] 에러: {e}")
 
