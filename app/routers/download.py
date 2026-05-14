@@ -66,6 +66,7 @@ def process_export_task(task_id: UUID, category: str, target_format: str, filter
             task = db.query(DownloadTask).filter(DownloadTask.id == task_id).first()
             if task:
                 task.status = "FAILED"
+                task.progress = 0
                 db.commit()
         except Exception:
             pass
@@ -134,4 +135,16 @@ def check_task_status(task_id: UUID, db: Session = Depends(get_db)):
             response_data["download_url"] = generate_presigned_url(result_file.s3_path)
 
     return response_data
+
+@router.get("/spatial/tasks", response_model=list[TaskStatusResponse])
+def list_tasks(
+    status: Optional[str] = None,  # 상태 필터 (PENDING/PROCESSING/COMPLETED/FAILED)
+    limit: int = 20,
+    db: Session = Depends(get_db)
+):
+    query = db.query(DownloadTask).order_by(DownloadTask.created_at.desc())
+    if status:
+        query = query.filter(DownloadTask.status == status)
+    tasks = query.limit(limit).all()
+    return [{"task_id": str(t.id), "status": t.status, "target_format": t.target_format, "download_url": None} for t in tasks]
 
