@@ -17,7 +17,7 @@ from app.services.s3_uploader import generate_presigned_url, upload_to_s3
 router = APIRouter()
 
 
-def process_export_task(task_id: int, category: str, target_format: str, filters: Optional[dict]):
+def process_export_task(task_id: UUID, category: str, target_format: str, filters: Optional[dict]):
     db: Session = SessionLocal()
     generated_file_path: Optional[str] = None
 
@@ -85,7 +85,12 @@ def request_download(
 ):
     new_task = DownloadTask(
         target_format=request.target_format.upper(),
-        status="PENDING"
+        status="PENDING",
+        request_params={
+            "category": request.category,
+            "target_format": request.target_format,
+            "filters": request.filters
+        }
     )
     db.add(new_task)
     db.commit()
@@ -116,7 +121,7 @@ def check_task_status(task_id: UUID, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="해당 작업을 찾을 수 없습니다.")
 
     response_data = {
-        "task_id": task.id,
+        "task_id": str(task.id),
         "status": task.status,
         "target_format": task.target_format,
         "download_url": None

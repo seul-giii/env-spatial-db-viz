@@ -69,7 +69,7 @@ def generate_export_file(
 
             return zip_path + ".zip"
 
-        elif target_format in ("GEOJSON", "GEOJSON"):
+        elif target_format == "GEOJSON":
             file_name = f"{category}_{timestamp}.geojson"
             file_path = os.path.join(downloads_dir, file_name)
             gdf.to_file(file_path, driver="GeoJSON")

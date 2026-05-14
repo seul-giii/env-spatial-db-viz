@@ -40,4 +40,6 @@ class DownloadTask(Base):
     progress = Column(Integer, default=0)
     result_file_id = Column(BigInteger, ForeignKey("files.id"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True),
+                        default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))

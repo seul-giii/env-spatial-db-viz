@@ -4,7 +4,7 @@ import re
 
 class DownloadRequest(BaseModel):
     category: str
-    target_format: Literal["CSV", "EXCEL", "SHP", "GeoJSON", "GEOJSON"]
+    target_format: Literal["CSV", "EXCEL", "SHP", "GEOJSON"]
     filters: Optional[Dict[str, str]] = None
 
     @field_validator("category")

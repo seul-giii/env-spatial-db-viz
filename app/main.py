@@ -12,6 +12,13 @@ app = FastAPI(
     version="1.0.0"
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
 # 다운로드 API 라우터 등록
 app.include_router(download.router, tags=["Download"])
 
@@ -19,9 +26,3 @@ app.include_router(download.router, tags=["Download"])
 def read_root():
     return {"message": "EnvData API 서버가 정상적으로 실행 중입니다."}
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
