@@ -151,5 +151,10 @@ def list_tasks(
         query = query.filter(DownloadTask.status == status)
     tasks = query.offset(offset).limit(limit).all()
 
-    return [{"task_id": str(t.id), "status": t.status, "target_format": t.target_format, "progress": t.progress, "download_url": None} for t in tasks]
+    completed_file_ids = [t.result_file_id for t in tasks if t.status == "COMPLETED" and t.result_file_id]
+    if completed_file_ids:
+        files = db.query(File).filter(File.id.in_(completed_file_ids)).all()
+        file_s3_map = {f.id: f.s3_path for f in files if f.s3_path}
+
+    return [{"task_id": str(t.id), "status": t.status, "target_format": t.target_format, "progress": t.progress, "download_url": t.download_url} for t in tasks]
 
