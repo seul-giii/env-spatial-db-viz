@@ -14,9 +14,6 @@ def generate_export_file(
     target_format: str,
     filters: Optional[Dict] = None
 ) -> str:
-    """
-    DB에서 공간 데이터를 조회하여 지정된 포맷으로 변환하고, 저장된 파일의 로컬 경로를 반환합니다.
-    """
     print(f"[데이터 추출 시작] 카테고리: {category}, 포맷: {target_format}")
 
     query = "SELECT id, category, properties, geom FROM spatial_data WHERE category = %(category)s"
@@ -29,17 +26,17 @@ def generate_export_file(
             params[f"fk{i}"] = key
             params[f"fv{i}"] = str(value)
 
-    engine = db.get_bind()
+    engine = db.bind
     gdf = gpd.read_postgis(query, con=engine, params=params, geom_col="geom")
 
     if gdf.empty:
         raise ValueError(f"'{category}'에 해당하는 데이터가 없습니다.")
 
-    props_df = pd.json_normalize(gdf['properties'])
+    props_df = pd.json_normalize(gdf['properties'].apply(lambda x: x if isinstance(x, dict) else {}))
     gdf = gdf.drop(columns=['properties']).join(props_df)
 
-    base_dir = os.getcwd()
-    downloads_dir = os.path.join(base_dir, "downloads")
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    downloads_dir = os.path.join(BASE_DIR, "downloads")
     os.makedirs(downloads_dir, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

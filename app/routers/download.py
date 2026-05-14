@@ -6,16 +6,17 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
 from app.models import DownloadTask, File
-from app.schemas import DownloadRequest, TaskResponse
+from app.schemas import DownloadRequest, TaskResponse, TaskStatusResponse
 from app.services.data_export_service import generate_export_file
 from app.services.s3_uploader import generate_presigned_url, upload_to_s3
+from typing import Optional
 
 router = APIRouter()
 
 
-def process_export_task(task_id: int, category: str, target_format: str, filters: dict | None):
+def process_export_task(task_id: int, category: str, target_format: str, filters: Optional[dict]):
     db: Session = SessionLocal()
-    generated_file_path: str | None = None
+    generated_file_path: Optional[str] = None
 
     try:
         task = db.query(DownloadTask).filter(DownloadTask.id == task_id).first()
@@ -102,7 +103,7 @@ def request_download(
     )
 
 
-@router.get("/spatial/task/{task_id}")
+@router.get("/spatial/task/{task_id}", response_model=TaskStatusResponse)
 def check_task_status(task_id: int, db: Session = Depends(get_db)):
     """
     프론트엔드가 task_id로 작업 진행 상황과 S3 다운로드 링크를 확인하는 API
@@ -125,3 +126,4 @@ def check_task_status(task_id: int, db: Session = Depends(get_db)):
             response_data["download_url"] = generate_presigned_url(result_file.s3_path)
 
     return response_data
+
