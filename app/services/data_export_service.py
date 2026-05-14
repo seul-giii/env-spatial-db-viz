@@ -12,12 +12,17 @@ def generate_export_file(
     db: Session,
     category: str,
     target_format: str,
+    region_name: Optional[str] = None,
     filters: Optional[Dict] = None
 ) -> str:
     print(f"[데이터 추출 시작] 카테고리: {category}, 포맷: {target_format}")
 
     query = "SELECT id, category, properties, geom FROM spatial_data WHERE category = %(category)s"
     params: Dict = {"category": category}
+
+    if region_name:
+        query += " AND region_name = %(region_name)s"
+        params["region_name"] = region_name
 
     # properties JSONB 컬럼에 대한 추가 필터 적용
     if filters:
@@ -26,7 +31,7 @@ def generate_export_file(
             params[f"fk{i}"] = key
             params[f"fv{i}"] = str(value)
 
-    engine = db.bind
+    engine = db.get_bind()
     gdf = gpd.read_postgis(query, con=engine, params=params, geom_col="geom")
 
     if gdf.empty:
