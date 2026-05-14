@@ -93,6 +93,12 @@ async def upload_spatial_file(
             db.commit()
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
+        if file_record:
+            try:
+                db.delete(file_record)
+                db.commit()
+            except Exception:
+                pass
         raise HTTPException(status_code=500, detail=f"업로드 처리 중 오류: {str(e)}")
     finally:
         if tmp_path and os.path.exists(tmp_path):

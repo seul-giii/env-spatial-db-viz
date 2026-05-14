@@ -127,6 +127,7 @@ def check_task_status(task_id: UUID, db: Session = Depends(get_db)):
         "task_id": str(task.id),
         "status": task.status,
         "target_format": task.target_format,
+        "progress": task.progress,
         "download_url": None
     }
 
@@ -142,11 +143,13 @@ def check_task_status(task_id: UUID, db: Session = Depends(get_db)):
 def list_tasks(
     status: Optional[str] = None,  # 상태 필터 (PENDING/PROCESSING/COMPLETED/FAILED)
     limit: int = 20,
+    offset: int = 0,
     db: Session = Depends(get_db)
 ):
     query = db.query(DownloadTask).order_by(DownloadTask.created_at.desc())
     if status:
         query = query.filter(DownloadTask.status == status)
-    tasks = query.limit(limit).all()
-    return [{"task_id": str(t.id), "status": t.status, "target_format": t.target_format, "download_url": None} for t in tasks]
+    tasks = query.offset(offset).limit(limit).all()
+
+    return [{"task_id": str(t.id), "status": t.status, "target_format": t.target_format, "progress": t.progress, "download_url": None} for t in tasks]
 

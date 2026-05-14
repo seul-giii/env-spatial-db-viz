@@ -42,9 +42,9 @@ class UploadResponse(BaseModel):
 class FileResponse(BaseModel):
     id: int
     file_name: str
-    file_type: str
-    format: str
-    file_size: int
+    format: Optional[str] = None
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
     created_at: datetime
 
     class Config:
