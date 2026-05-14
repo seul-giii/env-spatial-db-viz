@@ -2,8 +2,8 @@ import uuid
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, BigInteger
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from geoalchemy2 import Geometry
-from .database import Base
-from datetime import datetime
+from app.database import Base
+from datetime import datetime, timezone
 
 
 class File(Base):
@@ -14,7 +14,7 @@ class File(Base):
     s3_path = Column(String)
     file_name = Column(String)
     file_size = Column(BigInteger)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class SpatialData(Base):
@@ -39,5 +39,5 @@ class DownloadTask(Base):
     status = Column(String, default="PENDING")
     progress = Column(Integer, default=0)
     result_file_id = Column(BigInteger, ForeignKey("files.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

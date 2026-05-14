@@ -20,7 +20,7 @@ class TaskResponse(BaseModel):
     message: str
 
 class TaskStatusResponse(BaseModel):
-    task_id: int
+    task_id: str
     status: str
     target_format: str
     download_url: Optional[str] = None

@@ -1,5 +1,7 @@
 import os
 from datetime import datetime
+from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -9,7 +11,8 @@ from app.models import DownloadTask, File
 from app.schemas import DownloadRequest, TaskResponse, TaskStatusResponse
 from app.services.data_export_service import generate_export_file
 from app.services.s3_uploader import generate_presigned_url, upload_to_s3
-from typing import Optional
+
+
 
 router = APIRouter()
 
@@ -25,7 +28,7 @@ def process_export_task(task_id: int, category: str, target_format: str, filters
             return
 
         task.status = "PROCESSING"
-        task.started_at = datetime.now()
+        task.progress = 50
         db.commit()
 
         print(f"[Task ID: {task_id}] 백그라운드 파일 생성 작업을 시작합니다...")
@@ -53,8 +56,8 @@ def process_export_task(task_id: int, category: str, target_format: str, filters
 
         # 4. DOWNLOAD_TASKS 상태 업데이트
         task.result_file_id = new_file_record.id
+        task.progress = 100
         task.status = "COMPLETED"
-        task.completed_at = datetime.now()
         db.commit()
 
     except Exception as e:
@@ -97,14 +100,14 @@ def request_download(
     )
 
     return TaskResponse(
-        task_id=new_task.id,
+        task_id=str(new_task.id),
         status=new_task.status,
         message="다운로드 작업이 서버 백그라운드에서 시작되었습니다."
     )
 
 
 @router.get("/spatial/task/{task_id}", response_model=TaskStatusResponse)
-def check_task_status(task_id: int, db: Session = Depends(get_db)):
+def check_task_status(task_id: UUID, db: Session = Depends(get_db)):
     """
     프론트엔드가 task_id로 작업 진행 상황과 S3 다운로드 링크를 확인하는 API
     """
