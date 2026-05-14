@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import File as FileModel
-from app.schemas import UploadResponse
+from app.schemas import UploadResponse, FileResponse
 from app.services.file_parser import SUPPORTED_EXTENSIONS, parse_upload_file
 from app.services.s3_uploader import upload_to_s3
 
@@ -46,6 +46,7 @@ async def upload_spatial_file(
         raise HTTPException(status_code=413, detail="파일 크기는 100MB를 초과할 수 없습니다.")
 
     tmp_path: Optional[str] = None
+    file_record: Optional[FileModel] = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp:
             tmp.write(contents)
@@ -97,7 +98,7 @@ async def upload_spatial_file(
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-@router.get("/spatial/files")
+@router.get("/spatial/files", response_model=list[FileResponse])
 def list_files(file_type: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(FileModel).order_by(FileModel.created_at.desc())
     if file_type:

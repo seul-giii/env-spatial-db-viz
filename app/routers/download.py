@@ -17,7 +17,7 @@ from app.services.s3_uploader import generate_presigned_url, upload_to_s3
 router = APIRouter()
 
 
-def process_export_task(task_id: UUID, category: str, target_format: str, filters: Optional[dict]):
+def process_export_task(task_id: UUID, category: str, target_format: str, region_name: Optional[str], filters: Optional[dict]):
     db: Session = SessionLocal()
     generated_file_path: Optional[str] = None
 
@@ -34,7 +34,7 @@ def process_export_task(task_id: UUID, category: str, target_format: str, filter
         print(f"[Task ID: {task_id}] 백그라운드 파일 생성 작업을 시작합니다...")
 
         # 1. 파일 생성
-        generated_file_path = generate_export_file(db, category, target_format, filters)
+        generated_file_path = generate_export_file(db, category, target_format, region_name, filters)
         print(f"✅ [Task ID: {task_id}] 파일 생성 완료! 위치: {generated_file_path}")
 
         # 2. S3 업로드 → S3 키 저장 (URL은 조회 시점에 동적 생성)
@@ -90,6 +90,7 @@ def request_download(
         request_params={
             "category": request.category,
             "target_format": request.target_format,
+            "region_name": request.region_name,
             "filters": request.filters
         }
     )
@@ -102,6 +103,7 @@ def request_download(
         task_id=new_task.id,
         category=request.category,
         target_format=request.target_format,
+        region_name=request.region_name,
         filters=request.filters,
     )
 

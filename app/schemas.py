@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Dict, Literal, Optional
 
 from pydantic import BaseModel, field_validator
@@ -28,6 +29,7 @@ class TaskStatusResponse(BaseModel):
     task_id: str
     status: str
     target_format: str
+    progress: int = 0
     download_url: Optional[str] = None
 
 
@@ -36,3 +38,14 @@ class UploadResponse(BaseModel):
     file_name: str
     record_count: int
     message: str
+
+class FileResponse(BaseModel):
+    id: int
+    file_name: str
+    file_type: str
+    format: str
+    file_size: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
