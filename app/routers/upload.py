@@ -1,6 +1,7 @@
 import os
 import re
 import tempfile
+import uuid as uuid_lib
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -51,7 +52,8 @@ async def upload_spatial_file(
             tmp_path = tmp.name
 
         # 1. S3에 원본 파일 저장 (uploads/ prefix)
-        s3_key = upload_to_s3(tmp_path, original_name, prefix="uploads")
+        unique_name = f"{uuid_lib.uuid4().hex}_{original_name}"
+        s3_key = upload_to_s3(tmp_path, unique_name, prefix="uploads")
 
         # 2. FILES 테이블에 ORIGINAL 기록
         file_record = FileModel(
@@ -85,9 +87,19 @@ async def upload_spatial_file(
     except HTTPException:
         raise
     except (ValueError, RuntimeError) as e:
+        if file_record:
+            db.delete(file_record)
+            db.commit()
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"업로드 처리 중 오류: {str(e)}")
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+@router.get("/spatial/files")
+def list_files(file_type: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(FileModel).order_by(FileModel.created_at.desc())
+    if file_type:
+        query = query.filter(FileModel.file_type == file_type)
+    return query.limit(50).all()
