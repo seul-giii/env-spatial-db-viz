@@ -63,7 +63,7 @@ def parse_upload_file(
     if not records:
         raise ValueError("파일 내 유효한 공간 데이터가 없습니다.")
 
-    db.bulk_save_objects(records)
+    db.add_all(records)
     db.commit()
     return len(records)
 

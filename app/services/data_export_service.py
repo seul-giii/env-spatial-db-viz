@@ -51,12 +51,14 @@ def generate_export_file(
         if target_format == "CSV":
             file_name = f"{category}_{timestamp}.csv"
             file_path = os.path.join(downloads_dir, file_name)
+            gdf["geometry_wkt"] = gdf["geom"].apply(lambda g: g.wkt if g else None)
             gdf.drop(columns=['geom']).to_csv(file_path, index=False, encoding="utf-8-sig")
             return file_path
 
         elif target_format == "EXCEL":
             file_name = f"{category}_{timestamp}.xlsx"
             file_path = os.path.join(downloads_dir, file_name)
+            gdf["geometry_wkt"] = gdf["geom"].apply(lambda g: g.wkt if g else None)
             gdf.drop(columns=['geom']).to_excel(file_path, index=False)
             return file_path
 

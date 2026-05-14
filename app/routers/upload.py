@@ -105,8 +105,8 @@ async def upload_spatial_file(
             os.remove(tmp_path)
 
 @router.get("/spatial/files", response_model=list[FileResponse])
-def list_files(file_type: Optional[str] = None, db: Session = Depends(get_db)):
+def list_files(file_type: Optional[str] = None, limit: int = 20, offset: int = 0, db: Session = Depends(get_db)):
     query = db.query(FileModel).order_by(FileModel.created_at.desc())
     if file_type:
         query = query.filter(FileModel.file_type == file_type)
-    return query.limit(50).all()
+    return query.offset(offset).limit(limit).all()
