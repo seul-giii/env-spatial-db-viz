@@ -23,7 +23,7 @@ s3_client = boto3.client(
 )
 
 
-def upload_to_s3(local_file_path: str, object_name: str = None) -> str:
+def upload_to_s3(local_file_path: str, object_name: str = None, prefix: str = "exports") -> str:
     """파일을 S3에 업로드하고 S3 키를 반환합니다."""
     if not S3_BUCKET_NAME:
         raise ValueError("S3_BUCKET_NAME 환경 변수가 설정되지 않았습니다.")
@@ -31,7 +31,7 @@ def upload_to_s3(local_file_path: str, object_name: str = None) -> str:
     if object_name is None:
         object_name = os.path.basename(local_file_path)
 
-    s3_key = f"exports/{object_name}"
+    s3_key = f"{prefix}/{object_name}"
 
     try:
         s3_client.upload_file(local_file_path, S3_BUCKET_NAME, s3_key)

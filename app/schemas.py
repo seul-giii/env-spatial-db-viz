@@ -1,6 +1,8 @@
-from typing import Dict, Literal, Optional
-from pydantic import BaseModel, field_validator
 import re
+from typing import Dict, Literal, Optional
+
+from pydantic import BaseModel, field_validator
+
 
 class DownloadRequest(BaseModel):
     category: str
@@ -14,13 +16,22 @@ class DownloadRequest(BaseModel):
             raise ValueError("category는 1~50자의 영문, 한글, 숫자, _, - 만 허용됩니다.")
         return v
 
+
 class TaskResponse(BaseModel):
     task_id: str
     status: str
     message: str
+
 
 class TaskStatusResponse(BaseModel):
     task_id: str
     status: str
     target_format: str
     download_url: Optional[str] = None
+
+
+class UploadResponse(BaseModel):
+    file_id: int
+    file_name: str
+    record_count: int
+    message: str

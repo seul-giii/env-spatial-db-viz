@@ -1,9 +1,9 @@
 from fastapi import FastAPI
-from app.routers import download
-from app.database import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
 
-# DB 테이블 자동 생성
+from app.database import engine, Base
+from app.routers import download, upload
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -19,10 +19,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 다운로드 API 라우터 등록
 app.include_router(download.router, tags=["Download"])
+app.include_router(upload.router, tags=["Upload"])
 
 @app.get("/")
 def read_root():
     return {"message": "EnvData API 서버가 정상적으로 실행 중입니다."}
-
