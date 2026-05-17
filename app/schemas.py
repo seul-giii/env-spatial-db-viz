@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, List
 
 from pydantic import BaseModel, field_validator
 
@@ -10,6 +10,7 @@ class DownloadRequest(BaseModel):
     target_format: Literal["CSV", "EXCEL", "SHP", "GEOJSON"]
     region_name: Optional[str] = None
     filters: Optional[Dict[str, str]] = None
+    bbox: Optional[List[float]] = None
 
     @field_validator("category")
     @classmethod

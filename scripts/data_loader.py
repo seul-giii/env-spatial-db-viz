@@ -21,10 +21,10 @@ class SpatialDataLoader:
     def __init__(self, engine):
         self.engine = engine
 
-    def load_vector_data(self, file_path, category_name, encoding='utf-8', source_crs=None):
+    def load_vector_data(self, file_path, category_name, encoding='utf-8', source_crs=None, region_column=None):
         try:
             print(f"[{category_name}] 벡터 데이터 로딩 시작: {file_path}")
-            gdf = gpd.read_file(file_path, encoding=encoding)
+            gdf = gpd.read_file(file_path, encoding=encoding, engine="pyogrio")
 
             if gdf.crs is None and source_crs:
                 gdf.set_crs(source_crs, inplace=True)
@@ -56,19 +56,35 @@ class SpatialDataLoader:
                     VALUES (:category, ST_GeomFromText(:geom, 4326), :properties, :original_file_id, :region_name)
                 """)
 
-                for _, row in gdf.iterrows():
-                    props = row.drop('geometry').to_dict()
-                    clean_props = {k: (None if pd.isna(v) else v) for k, v in props.items()}
-                    props_json = json.dumps(clean_props, ensure_ascii=False, default=str)
-                    geom_wkt = row['geometry'].wkt if row['geometry'] else None
+                print(f"[{category_name}] 데이터 변환 및 Bulk Insert 준비 중...")
 
-                    conn.execute(insert_sql, {
+                # 1. 속성 데이터를 한 번에 딕셔너리로 변환
+                df_props = gdf.drop(columns=['geometry'])
+                df_props = df_props.astype(object).where(pd.notnull(df_props), None)
+                props_records = df_props.to_dict(orient='records')
+
+                bulk_data = []
+
+                for i, geom in enumerate(gdf['geometry']):
+                    props = props_records[i]
+                    props_json = json.dumps(props, ensure_ascii=False, default=str, allow_nan=False)
+                    geom_wkt = geom.wkt if geom else None
+                    extracted_region = props.get(region_column) if region_column else None
+
+                    bulk_data.append({
                         "category": category_name,
                         "geom": geom_wkt,
                         "properties": props_json,
                         "original_file_id": new_file_id,
-                        "region_name": None
+                        "region_name": extracted_region
                     })
+
+
+                chunk_size = 10000
+                for i in range(0, len(bulk_data), chunk_size):
+                    chunk = bulk_data[i: i + chunk_size]
+                    conn.execute(insert_sql, chunk)
+                    print(f"[{category_name}] {i + len(chunk)} / {len(bulk_data)}건 적재 완료...")
 
             print(f"[{category_name}] 공간 데이터 적재 완료! ({len(gdf)}건)")
 
@@ -127,40 +143,79 @@ if __name__ == "__main__":
 
     print("🚀 [ETL 파이프라인 시작] 데이터 적재를 시작합니다...\n")
 
-    # [그룹 B]
+    # ==========================================
+    # [그룹 B] 자연 데이터
+    # ==========================================
     # 1. 수문지질도
-    loader.load_vector_data("G:/.shortcut-targets-by-id/1SM2FGxQUujBXwlyhAaxbOfanlHVrwLgQ/3. 수문지질도/한국수문지질도.shp", "수문지질도", encoding="cp949", source_crs="EPSG:4326")
+    loader.load_vector_data(
+        "G:/.shortcut-targets-by-id/1SM2FGxQUujBXwlyhAaxbOfanlHVrwLgQ/3. 수문지질도/한국수문지질도.shp",
+        "지하수",
+        encoding="cp949",
+        region_column=None
+    )
 
     # 9. 지하수 등수위선
-    loader.load_vector_data("G:/.shortcut-targets-by-id/1awuSjLLy9UJd96DiCXTC8RDPWsM0FqmA/W_HG_POTENTIONMETRIC_WGS_L/W_HG_POTENTIONMETRIC_WGS_L.shp", "지하수 등수위선",
-                            encoding="utf-8", source_crs="EPSG:4326")
+    loader.load_vector_data(
+        "G:/.shortcut-targets-by-id/1awuSjLLy9UJd96DiCXTC8RDPWsM0FqmA/W_HG_POTENTIONMETRIC_WGS_L/W_HG_POTENTIONMETRIC_WGS_L.shp",
+        "지하수 등수위선",
+        encoding="utf-8",
+        region_column=None
+    )
 
-    # [그룹 A]
+    # 6. K31UJB100 (하천구역)
+    loader.load_vector_data(
+        "G:/.shortcut-targets-by-id/16aO4uHzDMPBQblM6SkCTMvnBxiwUzAcm/K31UJB100/하천구역.shp",
+        "하천구역",
+        encoding="cp949",
+        region_column=None
+    )
+
+    # 8. 수질 악화 위험 (2024 중분류 토지피복)
+    loader.load_vector_data(
+        "G:/.shortcut-targets-by-id/1q9L9MjQbBm6E9JGAjzm8u2XVRQ_tPpXW/Q_수질악화위험/2024_중분류토지피복_simplify.shp",
+        "중분류 토지피복",
+        encoding="cp949",
+        region_column=None
+    )
+
+    # ==========================================
+    # [그룹 A] 행정구역 데이터
+    # ==========================================
     # 2. 불투수면 비율
-    loader.load_vector_data("G:/.shortcut-targets-by-id/1JUPia2jlTQYOjSRgYBrVvvG1hIhFczlQ/불투수면 비율/시군구_불투수면_비율.shp", "불투수면 비율", encoding="cp949")
+    loader.load_vector_data(
+        "G:/.shortcut-targets-by-id/1JUPia2jlTQYOjSRgYBrVvvG1hIhFczlQ/불투수면 비율/시군구_불투수면_비율.shp",
+        "불투수면 비율",
+        encoding="cp949",
+        region_column="ADM_NM"
+    )
 
     # 4. 지하수 산출량 (양수량)
-    loader.load_vector_data("G:/.shortcut-targets-by-id/1bDyLYoIQtlSE82br4l-dvaW2GyVLl6qk/지하수_산출량도_(양수량)/지하수산출량도_양수량.shp", "지하수 산출량(양수량)", encoding="cp949")
+    loader.load_vector_data(
+        "G:/.shortcut-targets-by-id/1bDyLYoIQtlSE82br4l-dvaW2GyVLl6qk/지하수_산출량도_(양수량)/지하수산출량도_양수량.shp",
+        "지하수 산출량(양수량)",
+        encoding="cp949",
+        region_column="SGG"
+    )
 
     # 5. 지하수 산출량 (투수량계수)
     loader.load_vector_data(
         "G:/.shortcut-targets-by-id/1YSjF2wQIA52raGzuCyW3Ykj_Rt9SzAfn/지하수_산출량도_(투수량계수)/지하수산출량도_투수량계수.shp",
-        "지하수 산출량(투수량계수)", encoding="cp949")
+        "지하수 산출량(투수량계수)",
+        encoding="cp949",
+        region_column="SGG"
+    )
 
-    # 6. K31UJB100 (하천구역)
-    loader.load_vector_data("G:/.shortcut-targets-by-id/16aO4uHzDMPBQblM6SkCTMvnBxiwUzAcm/K31UJB100/하천구역.shp", "하천구역", encoding="cp949")
-
-    # 8. 수질 악화 위험 (2024 중분류 토지피복)
-    loader.load_vector_data("G:/.shortcut-targets-by-id/1q9L9MjQbBm6E9JGAjzm8u2XVRQ_tPpXW/Q_수질악화위험/2024_중분류토지피복_simplify.shp", "중분류 토지피복", encoding="cp949")
-
-
-    # [그룹 C] 래스터 데이터 대상 (분석 엔진용 TIF 메타데이터 추출)
-    # 3. 연간 지하수 재충전
-    loader.load_raster_metadata("G:/.shortcut-targets-by-id/1ApxkQL-oUVnPJmz_66MbJX7__OKiHMwZ/연간_지하수_재충전(annual_Recharge)/annual_recharge.tif", "연간 지하수 재충전")
-
-    # 7. 수질 기준 적합성
-    loader.load_raster_metadata("G:/.shortcut-targets-by-id/1QaNjtxZFutNmYpwUZbyyy35GSa5Lpq8p/Q_수질기준적합성/IDW_Q_지표수 유기오염물질.tif", "지표수 유기오염")
-    loader.load_raster_metadata("G:/.shortcut-targets-by-id/1QaNjtxZFutNmYpwUZbyyy35GSa5Lpq8p/Q_수질기준적합성/IDW_Q_지하수질산염.tif", "지하수 질산성질소")
-    loader.load_raster_metadata("G:/.shortcut-targets-by-id/1QaNjtxZFutNmYpwUZbyyy35GSa5Lpq8p/Q_수질기준적합성/Idw_Q_해수침투1.tif", "해수침투 지수")
+    # ==========================================
+    # [그룹 C] 래스터 데이터 대상 (TIF 메타데이터)
+    # ==========================================
+    loader.load_raster_metadata(
+        "G:/.shortcut-targets-by-id/1ApxkQL-oUVnPJmz_66MbJX7__OKiHMwZ/연간_지하수_재충전(annual_Recharge)/annual_recharge.tif",
+        "연간 지하수 재충전")
+    loader.load_raster_metadata(
+        "G:/.shortcut-targets-by-id/1QaNjtxZFutNmYpwUZbyyy35GSa5Lpq8p/Q_수질기준적합성/IDW_Q_지표수 유기오염물질.tif", "지표수 유기오염")
+    loader.load_raster_metadata(
+        "G:/.shortcut-targets-by-id/1QaNjtxZFutNmYpwUZbyyy35GSa5Lpq8p/Q_수질기준적합성/IDW_Q_지하수질산염.tif", "지하수 질산성질소")
+    loader.load_raster_metadata(
+        "G:/.shortcut-targets-by-id/1QaNjtxZFutNmYpwUZbyyy35GSa5Lpq8p/Q_수질기준적합성/Idw_Q_해수침투1.tif", "해수침투 지수")
 
     print("\n🎉 [ETL 파이프라인 종료] 모든 작업이 완료되었습니다!")
