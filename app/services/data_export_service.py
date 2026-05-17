@@ -133,24 +133,3 @@ class DataExportService:
         except Exception as e:
             logger.error(f"❌ [Task ID: {task_id}] 작업 중 내부 시스템 에러 발생: {e}")
             return json.dumps({"status": "FAILED", "error": str(e)}, ensure_ascii=False)
-
-
-# 로컬 가동 및 통합 테스트 스크립트
-if __name__ == "__main__":
-    import uuid
-
-    service = DataExportService()
-
-    # 테스트용 임시 가상 Task ID 생성
-    mock_task_id = str(uuid.uuid4())
-
-    test_bbox = [126.90, 37.50, 127.10, 37.60]
-
-    print("🎬 [로컬 익스포트 테스트 스크립트 가동]\n")
-    result = service.export_spatial_data(
-        task_id=mock_task_id,
-        category="지하수",
-        target_format="GEOJSON",
-        bbox=test_bbox
-    )
-    print(f"\n📊 [테스트 반환 결과]: {result}")
