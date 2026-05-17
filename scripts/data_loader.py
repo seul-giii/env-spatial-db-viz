@@ -6,6 +6,7 @@ import geopandas as gpd
 import rasterio
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
+from psycopg2.extras import execute_values
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 env_path = os.path.join(BASE_DIR, '.env')
@@ -71,22 +72,27 @@ class SpatialDataLoader:
                     geom_wkt = geom.wkt if geom else None
                     extracted_region = props.get(region_column) if region_column else None
 
-                    bulk_data.append({
-                        "category": category_name,
-                        "geom": geom_wkt,
-                        "properties": props_json,
-                        "original_file_id": new_file_id,
-                        "region_name": extracted_region
-                    })
+                    bulk_data.append((
+                        category_name,
+                        geom_wkt,
+                        props_json,
+                        new_file_id,
+                        extracted_region,
+                    ))
 
-
-                chunk_size = 10000
-                for i in range(0, len(bulk_data), chunk_size):
-                    chunk = bulk_data[i: i + chunk_size]
-                    conn.execute(insert_sql, chunk)
-                    print(f"[{category_name}] {i + len(chunk)} / {len(bulk_data)}건 적재 완료...")
-
-            print(f"[{category_name}] 공간 데이터 적재 완료! ({len(gdf)}건)")
+                raw_conn = conn.connection
+                with raw_conn.cursor() as cur:
+                    execute_values(
+                        cur,
+                        """
+                        INSERT INTO spatial_data (category, geom, properties, original_file_id, region_name)
+                        VALUES %s
+                        """,
+                        bulk_data,
+                        template="(%s, ST_GeomFromText(%s, 4326), %s, %s, %s)",
+                        page_size=10000,
+                    )
+                print(f"[{category_name}] {len(bulk_data)}건 적재 완료")
 
         except Exception as e:
             print(f"❌ [{category_name}] 적재 중 에러 발생: {e}")
