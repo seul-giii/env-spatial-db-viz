@@ -177,12 +177,12 @@ if __name__ == "__main__":
     )
 
     # 8. 수질 악화 위험 (2024 중분류 토지피복)
-    #loader.load_vector_data(
-    #    "G:/.shortcut-targets-by-id/1q9L9MjQbBm6E9JGAjzm8u2XVRQ_tPpXW/Q_수질악화위험/2024_중분류토지피복_simplify.shp",
-    #    "중분류 토지피복",
-    #    encoding="cp949",
-    #    region_column=None
-    #)
+    loader.load_vector_data(
+        "G:/.shortcut-targets-by-id/1q9L9MjQbBm6E9JGAjzm8u2XVRQ_tPpXW/Q_수질악화위험/2024_중분류토지피복_simplify.shp",
+        "중분류 토지피복",
+        encoding="cp949",
+        region_column=None
+    )
 
     # ==========================================
     # [그룹 A] 행정구역 데이터
